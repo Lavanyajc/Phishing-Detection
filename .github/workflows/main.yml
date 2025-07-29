@@ -77,4 +77,4 @@ jobs:
             docker pull ${{ secrets.ECR_REGISTRY }}/ecr-deployer:latest
             docker stop phishing-app || true
             docker rm phishing-app || true
-            docker run -d --name phishing-app -p 80:8080 ${{ secrets.ECR_REGISTRY }}/ecr-deployer:latest
+            docker run -d --name phishing-app -p 80:8000 ${{ secrets.ECR_REGISTRY }}/ecr-deployer:latest
