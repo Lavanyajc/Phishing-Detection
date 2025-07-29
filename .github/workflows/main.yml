@@ -1,4 +1,4 @@
-name: workflow
+name: CI/CD Workflow
 
 on:
   push:
@@ -19,36 +19,37 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Lint code
+      - name: Lint Code
         run: echo "Linting repository"
 
-      - name: Run unit tests
+      - name: Run Unit Tests
         run: echo "Running unit tests"
 
   build-and-push-ecr-image:
-    name: Continuous Delivery
+    name: Build and Push to ECR
     needs: integration
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Install Utilities
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y jq unzip
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: arn:aws:iam::467719059918:role/OIDC
-          aws-region: ap-south-1  # or your region
+          aws-region: ap-south-1
 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build, tag, and push image to Amazon ECR
+      - name: Build, Tag, and Push Docker image to ECR
+        id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ecr-deployer
@@ -56,14 +57,14 @@ jobs:
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          echo "::set-output name=image::$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
   deploy-to-ec2:
-    name: Deploy to EC2 (Amazon Linux)
+    name: Deploy on EC2 (Amazon Linux)
     needs: build-and-push-ecr-image
     runs-on: ubuntu-latest
     steps:
-      - name: Connect to EC2 and deploy
+      - name: Deploy via SSH to EC2
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -72,7 +73,8 @@ jobs:
           script: |
             sudo yum install -y docker
             sudo service docker start
-            sudo docker login -u AWS -p $(aws ecr get-login-password --region ap-south-1) ${{ steps.login-ecr.outputs.registry }}
-            docker pull ${{ steps.login-ecr.outputs.registry }}/ecr-deployer:latest
-            docker stop phishing-app || true && docker rm phishing-app || true
-            docker run -d --name phishing-app -p 80:8080 ${{ steps.login-ecr.outputs.registry }}/ecr-deployer:latest
+            aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${{ secrets.ECR_REGISTRY }}
+            docker pull ${{ secrets.ECR_REGISTRY }}/ecr-deployer:latest
+            docker stop phishing-app || true
+            docker rm phishing-app || true
+            docker run -d --name phishing-app -p 80:8080 ${{ secrets.ECR_REGISTRY }}/ecr-deployer:latest
