@@ -93,6 +93,6 @@ async def predict_route(request: Request, file: UploadFile = File(...)):
         logging.error(f"Prediction Failed: {e}")
         raise NetworkSecurityException(e, sys)
 
-# Main Runner via port 8080 
+# Main Runner 
 if __name__ == "__main__": 
     app_run(app, host="0.0.0.0", port=8000)
